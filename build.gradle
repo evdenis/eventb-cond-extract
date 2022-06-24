@@ -1,0 +1,36 @@
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'application'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+
+//def prob_version = "3.11.0"
+mainClassName = "eventb_cond_extract/Runner"
+
+
+repositories {
+	mavenCentral()
+	maven {
+		name "snapshot"
+		url "https://oss.sonatype.org/content/repositories/snapshots/"
+	}
+}
+
+dependencies {
+	compile "de.hhu.stups:rodin-eventb-ast:3.2.0"
+	//compile "de.hhu.stups:de.prob2.kernel:${prob_version}"
+	//compile 'org.json:json:20190722'
+	compile 'commons-cli:commons-cli:1.4'
+}
+
+
+jar {
+	manifest {
+		attributes('Main-Class': 'eventb_cond_extract.Runner')
+	}
+	from {
+		configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+	}
+}
