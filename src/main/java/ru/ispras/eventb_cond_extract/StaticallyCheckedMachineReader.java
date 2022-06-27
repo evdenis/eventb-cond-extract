@@ -1,4 +1,4 @@
-package eventb_cond_extract;
+package ru.ispras.eventb_cond_extract;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +17,16 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
+/**
+ * Reader for Rodin Event-B statically checked machine files.
+ *
+ * Rodin stores Event-B model in a bunch of files. The reader
+ * aims to *.bcm files. These files are contained statically
+ * checked models.
+ *
+ * To read the machine instantiate this class and call
+ * {@link read} method with path to *.bcm file. It returns the machine.
+ */
 public class StaticallyCheckedMachineReader
 {
 	static final String MACHINE_TAG = "org.eventb.core.scMachineFile";
@@ -30,6 +40,16 @@ public class StaticallyCheckedMachineReader
 	static final String TYPE_ATTRIBUTE = "org.eventb.core.type";
 	static final String PREDICATE_ATTRIBUTE = "org.eventb.core.predicate";
 
+	/**
+	 * Reads the machine from the *.bcm file.
+	 *
+	 * @param path		path to file with staticaly checked machine (*.bcm file)
+	 * @return				statically checked machine
+	 * @throws ParserConfigurationException	if the *.bcm file is incorrect
+	 * @throws SAXException			if the *.bcm file syntax is incorrect
+	 * @throws IOException			if the *.bcm file can't be opened or read
+	 * @throws IllegalArgumentException	if the *.bcm file content is incorrect
+	 */
 	public StaticallyCheckedMachine read(final String path)
 		throws ParserConfigurationException, SAXException, IOException
 	{
