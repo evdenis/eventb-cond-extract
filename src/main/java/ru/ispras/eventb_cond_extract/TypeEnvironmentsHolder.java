@@ -14,14 +14,14 @@ import org.eventb.core.ast.*;
  * and types of parameters of events.
  *
  * Instantiate the class and use the fields.
- * {@link variablesTypeEnvironments} is a type
+ * {@link variablesTypeEnvironment} is a type
  * environment with all variables.
  * {@link eventsTypeEnvironments} is a types
  * environments with all events.
  *
  * Immutable.
  */
-class TypeEnvironmentsHolder
+public final class TypeEnvironmentsHolder
 {
 	/**
 	 * Type environment with all variables.
