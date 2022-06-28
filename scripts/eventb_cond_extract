@@ -3,5 +3,5 @@
 SCRIPT=$(readlink -f "$0")
 DIR=$(dirname "$SCRIPT")
 
-java -jar "${DIR}/../lib/eventb_cond_extract.jar" $@
+java -jar "${DIR}/../lib/eventb-cond-extract.jar" $@
 
