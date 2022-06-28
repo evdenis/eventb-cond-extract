@@ -34,6 +34,30 @@ public class ConditionsExtractorTest
 	}
 
 	@Test
+	public void setTheoryCondition()
+	{
+		final StaticallyCheckedVariable scVariable = new StaticallyCheckedVariable("Processes", "\u2119(\u2124)"); // POW(INT)
+		final StaticallyCheckedParameter scParameter = new StaticallyCheckedParameter("p", INT);
+		final StaticallyCheckedGuard scGuard = new StaticallyCheckedGuard("grd1", "p \u2208 Processes");
+		final StaticallyCheckedEvent scEvent = new StaticallyCheckedEvent("event-1", Arrays.asList(scParameter), Arrays.asList(scGuard)); 
+		final StaticallyCheckedMachine scMachine = new StaticallyCheckedMachine(Arrays.asList(scVariable), Arrays.asList(scEvent));
+		final ConditionsExtractor conditionsExtractor = new ConditionsExtractor(scMachine);
+		
+		assertEquals(conditionsExtractor.conditions.conditions_order.size(), 1);
+		assertTrue(conditionsExtractor.conditions.conditions_order.containsKey("event-1"));
+		assertEquals(conditionsExtractor.conditions.conditions_order.get("event-1").size(), 1);
+		assertEquals(conditionsExtractor.conditions.conditions_order.get("event-1").get(0), "grd1/1");
+		
+		assertEquals(conditionsExtractor.conditions.conditions.size(), 1);
+		assertTrue(conditionsExtractor.conditions.conditions.containsKey("event-1"));
+		assertEquals(conditionsExtractor.conditions.conditions.get("event-1").size(), 1);
+		assertTrue(conditionsExtractor.conditions.conditions.get("event-1").containsKey("grd1/1"));
+		final Condition c = conditionsExtractor.conditions.conditions.get("event-1").get("grd1/1");
+		assertEquals(c.id, "grd1/1");
+	       	assertEquals(c.predicate.toString(), "p\u2208Processes");
+	}
+
+	@Test
 	public void splitCondition()
 	{
 		final StaticallyCheckedParameter scParameter = new StaticallyCheckedParameter("p", INT);
