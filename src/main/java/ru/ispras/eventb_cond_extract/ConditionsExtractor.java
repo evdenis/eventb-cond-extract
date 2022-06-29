@@ -64,9 +64,17 @@ public class ConditionsExtractor {
 	public final TypeEnvironmentsHolder typeEnvironments;
 
 	/**
-	 * Conditions of the machine.
+	 * Conditions for events of the machine.
 	 */
 	public final Conditions conditions;
+
+	/**
+	 * Conditions for guards of the machine.
+	 */
+	public final Conditions guardsConditions;
+
+	private final Map<Predicate, Predicate> normalizedPredicates;
+	private final Map<StaticallyCheckedEvent, Map<Predicate, Condition>> conditionsPredicates;
 
 	/**
 	 *
@@ -77,7 +85,10 @@ public class ConditionsExtractor {
 	{
 		this.scMachine = scMachine;
 		this.typeEnvironments = new TypeEnvironmentsHolder(scMachine);
+		this.normalizedPredicates = new HashMap<>();
+		this.conditionsPredicates = new HashMap<>();
 		this.conditions = computeConditions().build();
+		this.guardsConditions = computeGuardsConditions().build();
 	}
 
 	private Conditions.Builder computeConditions() {
@@ -86,6 +97,8 @@ public class ConditionsExtractor {
 		scMachine.events.forEach(event -> {
 			final Map<StaticallyCheckedGuard, List<Predicate>> predicates = new HashMap<>();
 			computeEventConditions(event, predicates);
+			removeIdenticalPredicates(event, predicates);
+			conditionsPredicates.put(event, new HashMap<>());
 			
 			final ITypeEnvironment typeEnvironment = typeEnvironments.eventsTypeEnvironments.get(event.label);
 			final Map<String, Condition> event_conditions = new HashMap<>();
@@ -96,8 +109,10 @@ public class ConditionsExtractor {
 					final Predicate c = p.get(i);
 					final String condition_id = String.format("%s/%d", guard.label, i + 1);
 					final String wdPredicate = computeWDPredicate(c, typeEnvironment);
+					final Condition condition = new Condition(condition_id, c, wdPredicate);
 					event_conditions_order.add(condition_id);
-					event_conditions.put(condition_id, new Condition(condition_id, c, wdPredicate));
+					event_conditions.put(condition_id, condition);
+					conditionsPredicates.get(event).put(c, condition);
 				}
 			});
 			conditionsBuilder.conditions.put(event.label, event_conditions);
@@ -114,9 +129,9 @@ public class ConditionsExtractor {
 		event.guards.forEach(guard -> {
 			final List<Predicate> predicates = new ArrayList<>();
 			computeGuardConditions(guard, predicates);
+			normalizePredicates(predicates);
 			conditions.put(guard, predicates);
 		});
-		removeIdenticalPredicates(event, conditions);
 	}
 
 	private void computeGuardConditions(
@@ -239,11 +254,36 @@ public class ConditionsExtractor {
 		}
 	}
 
+	private Conditions.Builder computeGuardsConditions()
+	{
+		final Conditions.Builder conditionsBuilder = new Conditions.Builder();
+
+		scMachine.events.forEach(event -> {
+			final Map<StaticallyCheckedGuard, List<Predicate>> predicates = new HashMap<>();
+			computeEventConditions(event, predicates);
+			final Map<StaticallyCheckedGuard, List<Condition>> conditionsAfterRemovingIdenticals =
+				replaceIdenticalPredicates(event, predicates);
+
+			conditionsAfterRemovingIdenticals.entrySet().stream().forEach(e -> {
+				final StaticallyCheckedGuard guard = e.getKey();
+				final List<Condition> guardConditions = e.getValue();
+				final String guardFullId = event.label + "/" + guard.label;
+				final Map<String, Condition> conditionsById = guardConditions.stream().
+					collect(Collectors.toMap(c -> c.id, c -> c));
+				final List<String> conditionsIdsList = guardConditions.stream().
+					map(c -> c.id).collect(Collectors.toList());
+				conditionsBuilder.conditions.put(guardFullId, conditionsById);
+				conditionsBuilder.conditions_order.put(guardFullId, conditionsIdsList);
+			});
+		});
+
+		return conditionsBuilder;
+	}
+
 	private void removeIdenticalPredicates(final StaticallyCheckedEvent event, final Map<StaticallyCheckedGuard, List<Predicate>> predicates)
 	{
 		final List<Predicate> allPredicates = new ArrayList<>();
 		final Map<Predicate, StaticallyCheckedGuard> predicatesToGuard = new HashMap<>();
-		final Map<Predicate, String> normalizedPredicates = new HashMap<>();
 		event.guards.forEach(guard -> {
 			final Set<Predicate> toRemove = new HashSet<>();
 			predicates.get(guard).forEach(predicate -> {
@@ -252,7 +292,6 @@ public class ConditionsExtractor {
 				} else {
 					allPredicates.add(predicate);
 					predicatesToGuard.put(predicate, guard);
-					normalizedPredicates.put(predicate, getNormalizedPredicate(predicate).toString());
 				}
 			});
 			predicates.get(guard).removeAll(toRemove);
@@ -260,18 +299,39 @@ public class ConditionsExtractor {
 		
 		for (int i = 0; i < allPredicates.size(); ++i) {
 			final Predicate p = allPredicates.get(i);
-			final String n = normalizedPredicates.get(p);
+			final String n = normalizedPredicates.get(p).toString();
 			final StaticallyCheckedGuard g = predicatesToGuard.get(p);
 
 			for (int j = 0; j < i; ++j) {
 				final Predicate p2 = allPredicates.get(j);
-				final String n2 = normalizedPredicates.get(p2);
+				final String n2 = normalizedPredicates.get(p2).toString();
 				if (n.equals(n2)) {
 					predicates.get(g).remove(p);
 					break;
 				}
 			}
 		}
+	}
+
+	private Map<StaticallyCheckedGuard, List<Condition>> replaceIdenticalPredicates(
+			final StaticallyCheckedEvent event,
+			final Map<StaticallyCheckedGuard, List<Predicate>> predicates)
+	{
+		final Collection<Condition> eventConditions = conditions.conditions.get(event.label).values();
+		// replace each predicate in "predicates" by its normalized version from conditions
+		return predicates.entrySet().stream().collect(Collectors.toMap(e -> e.getKey(), e -> {
+			final List<Predicate> predicates_list = e.getValue();
+			return predicates_list.stream()
+				.map(originalPredicate -> {
+					final String normalizedOrigPred = normalizedPredicates.get(originalPredicate).toString();
+
+					return eventConditions.stream()
+						.filter(condition ->
+							normalizedPredicates.get(condition.predicate).toString().equals(normalizedOrigPred))
+						.findFirst().get();
+				})
+				.collect(Collectors.toList());
+		}));
 	}
 
 	private String computeWDPredicate(
@@ -289,6 +349,15 @@ public class ConditionsExtractor {
 			}
 		}
 		return predicate.getWDPredicate().toString();
+	}
+
+	private void normalizePredicates(final List<Predicate> predicates)
+	{
+		predicates.stream().forEach(predicate -> {
+			if (! normalizedPredicates.containsKey(predicate)) {
+				normalizedPredicates.put(predicate, getNormalizedPredicate(predicate));
+			}
+		});
 	}
 
 	private Predicate getNormalizedPredicate(final Predicate predicate)
@@ -405,6 +474,28 @@ public class ConditionsExtractor {
 			});
 			out.println();
 		});
+	}
+
+	/**
+	 * Prints the conditions.
+	 * It prints the list of conditions identifiers and
+	 * conditions predicates for each event.
+	 * The order of events is gotten from the machine.
+	 *
+	 * @param out	stream to output the conditions
+	 */
+	public void printGuardsConditions(final PrintStream out) {
+		scMachine.events.stream().forEach(scEvent ->
+			scEvent.guards.stream().forEach(scGuard -> {
+				final String fullGuardLabel = scEvent.label + "/" + scGuard.label;
+				out.println(fullGuardLabel);
+				guardsConditions.conditions_order.get(fullGuardLabel).stream().forEach(condition_id -> {
+					final String predicate = guardsConditions.conditions.get(fullGuardLabel).get(condition_id).predicate.toString();
+					out.println(" - [" + condition_id + "] " + predicate);
+				});
+				out.println();
+			})
+		);
 	}
 
 }

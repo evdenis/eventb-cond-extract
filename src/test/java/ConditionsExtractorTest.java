@@ -216,4 +216,26 @@ public class ConditionsExtractorTest
 		assertEquals(c2.id, "grd2/1");
 	       	assertEquals(c2.predicate.toString(), "p<2");
 	}
+
+	@Test
+	public void guardsConditions()
+	{
+		final StaticallyCheckedParameter scParameter = new StaticallyCheckedParameter("p", INT);
+		final StaticallyCheckedGuard scGuard1 = new StaticallyCheckedGuard("grd1", "0 < p");
+		final StaticallyCheckedGuard scGuard2 = new StaticallyCheckedGuard("grd2", "p \u2264 0 \u21d4 \u00ac p < 2");
+		final StaticallyCheckedEvent scEvent = new StaticallyCheckedEvent("event-1", Arrays.asList(scParameter), Arrays.asList(scGuard1, scGuard2)); 
+		final StaticallyCheckedMachine scMachine = new StaticallyCheckedMachine(new ArrayList<>(), Arrays.asList(scEvent));
+		final ConditionsExtractor conditionsExtractor = new ConditionsExtractor(scMachine);
+
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.size(), 2);
+		assertTrue(conditionsExtractor.guardsConditions.conditions_order.containsKey("event-1/grd1"));
+		assertTrue(conditionsExtractor.guardsConditions.conditions_order.containsKey("event-1/grd2"));
+
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd1").size(), 1);
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd1").get(0), "grd1/1");
+
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").size(), 2);
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").get(0), "grd1/1");
+		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").get(1), "grd2/1");
+	}
 }

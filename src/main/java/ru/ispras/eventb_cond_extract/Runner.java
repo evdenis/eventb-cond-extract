@@ -21,6 +21,7 @@ public class Runner
 		Options options = new Options();
 
 		options.addOption("m", "model", true, "model.bum file path");
+		options.addOption("g", "guards", false, "print guards coverage instead of events coverage");
 		//options.addOption("o", "output", false, "file to output the conditions");
 
 		final CommandLineParser parser = new DefaultParser();
@@ -42,7 +43,11 @@ public class Runner
 			final StaticallyCheckedMachine scMachine = new StaticallyCheckedMachineReader().read(scModelFile);
 
 			final ConditionsExtractor extractor = new ConditionsExtractor(scMachine);
-			extractor.printConditions(System.out);
+			if (cmd.hasOption("guards")) {
+				extractor.printGuardsConditions(System.out);
+			} else {
+				extractor.printConditions(System.out);
+			}
 
 			System.exit(0);
 		} catch (final Exception e) {
