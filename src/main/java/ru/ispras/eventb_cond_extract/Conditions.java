@@ -43,19 +43,13 @@ public class Conditions
 		) {
 			throw new IllegalArgumentException("Different keys in conditions substructures");
 		}
-		//2. for each key in conditions_order: conditions_order[key].size() == conditions[key].size()
-		if (! conditions.keySet().stream().allMatch(key -> 
-			conditions_order.get(key).size() == conditions.get(key).size()
-		)) {
-			throw new IllegalArgumentException("Different sizes of values in conditions substructures");
-		}
-		//3. for each key in conditions: dom conditions[key] == set from conditions_order[key]
+		//2. for each key in conditions: dom conditions[key] == set from conditions_order[key]
 		if (! conditions.keySet().stream().allMatch(key -> 
 			conditions.get(key).keySet().equals(new HashSet<>(conditions_order.get(key)))
 		)) {
 			throw new IllegalArgumentException("Different values in conditions substructures");
 		}
-		//4. for each key in conditions: for each k in conditions[key]: conditions[key][k].id == k
+		//3. for each key in conditions: for each k in conditions[key]: conditions[key][k].id == k
 		if (! conditions.values().stream().allMatch(map ->
 			map.keySet().stream().allMatch(key ->
 				map.get(key).id == key

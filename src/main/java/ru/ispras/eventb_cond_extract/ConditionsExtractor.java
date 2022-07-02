@@ -3,6 +3,7 @@ package ru.ispras.eventb_cond_extract;
 import java.io.PrintStream;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.eventb.core.ast.*;
@@ -64,17 +65,20 @@ public class ConditionsExtractor {
 	public final TypeEnvironmentsHolder typeEnvironments;
 
 	/**
+	 * Syntactically extracted elementary predicates of the machine.
+	 *
+	 * Immutable.
+	 */
+	public final Map<StaticallyCheckedEvent, Map<StaticallyCheckedGuard, List<Predicate>>> elementaryPredicates;
+
+	/**
 	 * Conditions for events of the machine.
+	 *
+	 * It doesn't have identical predicates comparing with {@link elementaryPredicates}.
 	 */
 	public final Conditions conditions;
 
-	/**
-	 * Conditions for guards of the machine.
-	 */
-	public final Conditions guardsConditions;
-
-	private final Map<Predicate, Predicate> normalizedPredicates;
-	private final Map<StaticallyCheckedEvent, Map<Predicate, Condition>> conditionsPredicates;
+	private final PredicatesNormalizer predicatesNormalizer;
 
 	/**
 	 *
@@ -85,41 +89,18 @@ public class ConditionsExtractor {
 	{
 		this.scMachine = scMachine;
 		this.typeEnvironments = new TypeEnvironmentsHolder(scMachine);
-		this.normalizedPredicates = new HashMap<>();
-		this.conditionsPredicates = new HashMap<>();
-		this.conditions = computeConditions().build();
-		this.guardsConditions = computeGuardsConditions().build();
+		this.predicatesNormalizer = new PredicatesNormalizer();
+		this.elementaryPredicates = Collections.unmodifiableMap(extractElementaryPredicates());
+		this.conditions = makeConditions().build();
 	}
 
-	private Conditions.Builder computeConditions() {
-		final Conditions.Builder conditionsBuilder = new Conditions.Builder();
-
-		scMachine.events.forEach(event -> {
+	private Map<StaticallyCheckedEvent, Map<StaticallyCheckedGuard, List<Predicate>>> extractElementaryPredicates()
+	{
+		return scMachine.events.stream().collect(Collectors.toMap(event -> event, event -> {
 			final Map<StaticallyCheckedGuard, List<Predicate>> predicates = new HashMap<>();
 			computeEventConditions(event, predicates);
-			removeIdenticalPredicates(event, predicates);
-			conditionsPredicates.put(event, new HashMap<>());
-			
-			final ITypeEnvironment typeEnvironment = typeEnvironments.eventsTypeEnvironments.get(event.label);
-			final Map<String, Condition> event_conditions = new HashMap<>();
-			final List<String> event_conditions_order = new ArrayList<>();
-			event.guards.forEach(guard -> {
-				final List<Predicate> p = predicates.get(guard);
-				for (int i = 0; i < p.size(); ++i) {
-					final Predicate c = p.get(i);
-					final String condition_id = String.format("%s/%d", guard.label, i + 1);
-					final String wdPredicate = computeWDPredicate(c, typeEnvironment);
-					final Condition condition = new Condition(condition_id, c, wdPredicate);
-					event_conditions_order.add(condition_id);
-					event_conditions.put(condition_id, condition);
-					conditionsPredicates.get(event).put(c, condition);
-				}
-			});
-			conditionsBuilder.conditions.put(event.label, event_conditions);
-			conditionsBuilder.conditions_order.put(event.label, event_conditions_order);
-		});
-
-		return conditionsBuilder;
+			return predicates;
+		}));
 	}
 
 	private void computeEventConditions(
@@ -129,7 +110,6 @@ public class ConditionsExtractor {
 		event.guards.forEach(guard -> {
 			final List<Predicate> predicates = new ArrayList<>();
 			computeGuardConditions(guard, predicates);
-			normalizePredicates(predicates);
 			conditions.put(guard, predicates);
 		});
 	}
@@ -254,84 +234,66 @@ public class ConditionsExtractor {
 		}
 	}
 
-	private Conditions.Builder computeGuardsConditions()
+	private Conditions.Builder makeConditions()
 	{
 		final Conditions.Builder conditionsBuilder = new Conditions.Builder();
 
 		scMachine.events.forEach(event -> {
-			final Map<StaticallyCheckedGuard, List<Predicate>> predicates = new HashMap<>();
-			computeEventConditions(event, predicates);
-			final Map<StaticallyCheckedGuard, List<Condition>> conditionsAfterRemovingIdenticals =
-				replaceIdenticalPredicates(event, predicates);
+			final ITypeEnvironment typeEnvironment = typeEnvironments.eventsTypeEnvironments.get(event.label);
+			final Map<String, Condition> event_conditions = new HashMap<>();
+			final List<String> event_conditions_order = new ArrayList<>();
 
-			conditionsAfterRemovingIdenticals.entrySet().stream().forEach(e -> {
-				final StaticallyCheckedGuard guard = e.getKey();
-				final List<Condition> guardConditions = e.getValue();
-				final String guardFullId = event.label + "/" + guard.label;
-				final Map<String, Condition> conditionsById = guardConditions.stream().
-					collect(Collectors.toMap(c -> c.id, c -> c));
-				final List<String> conditionsIdsList = guardConditions.stream().
-					map(c -> c.id).collect(Collectors.toList());
-				conditionsBuilder.conditions.put(guardFullId, conditionsById);
-				conditionsBuilder.conditions_order.put(guardFullId, conditionsIdsList);
+			final Map<StaticallyCheckedGuard, List<Predicate>> conditionsPredicates =
+				withoutIdenticalPredicates(event, elementaryPredicates.get(event));
+			event.guards.forEach(guard -> {
+				final List<Predicate> p = conditionsPredicates.get(guard);
+				for (int i = 0; i < p.size(); ++i) {
+					final Predicate c = p.get(i);
+					final String condition_id = String.format("%s/%d", guard.label, i + 1);
+					final String wdPredicate = computeWDPredicate(c, typeEnvironment);
+					final Condition condition = new Condition(condition_id, c, wdPredicate);
+					event_conditions_order.add(condition_id);
+					event_conditions.put(condition_id, condition);
+				}
 			});
+			conditionsBuilder.conditions.put(event.label, event_conditions);
+			conditionsBuilder.conditions_order.put(event.label, event_conditions_order);
 		});
 
 		return conditionsBuilder;
 	}
 
-	private void removeIdenticalPredicates(final StaticallyCheckedEvent event, final Map<StaticallyCheckedGuard, List<Predicate>> predicates)
+	private Map<StaticallyCheckedGuard, List<Predicate>>
+		withoutIdenticalPredicates(final StaticallyCheckedEvent event, final Map<StaticallyCheckedGuard, List<Predicate>> predicates)
 	{
 		final List<Predicate> allPredicates = new ArrayList<>();
 		final Map<Predicate, StaticallyCheckedGuard> predicatesToGuard = new HashMap<>();
 		event.guards.forEach(guard -> {
-			final Set<Predicate> toRemove = new HashSet<>();
-			predicates.get(guard).forEach(predicate -> {
-				if (allPredicates.contains(predicate)) {
-					toRemove.add(predicate);
-				} else {
+			predicates.get(guard).stream().forEach(predicate -> {
+				if (!allPredicates.contains(predicate)) {
 					allPredicates.add(predicate);
 					predicatesToGuard.put(predicate, guard);
 				}
 			});
-			predicates.get(guard).removeAll(toRemove);
 		});
 		
-		for (int i = 0; i < allPredicates.size(); ++i) {
+		final Map<StaticallyCheckedGuard, List<Predicate>> result =
+			predicates.keySet().stream().collect(Collectors.toMap(g -> g, g -> new ArrayList<>()));
+
+		IntStream.range(0, allPredicates.size()).forEach(i -> {
 			final Predicate p = allPredicates.get(i);
-			final String n = normalizedPredicates.get(p).toString();
-			final StaticallyCheckedGuard g = predicatesToGuard.get(p);
+			final String n = predicatesNormalizer.get(p);
 
-			for (int j = 0; j < i; ++j) {
+			if (! IntStream.range(0, i).anyMatch(j -> {
 				final Predicate p2 = allPredicates.get(j);
-				final String n2 = normalizedPredicates.get(p2).toString();
-				if (n.equals(n2)) {
-					predicates.get(g).remove(p);
-					break;
-				}
+				final String n2 = predicatesNormalizer.get(p2);
+				return n.equals(n2);
+			})) {
+				final StaticallyCheckedGuard guard = predicatesToGuard.get(p);
+				result.get(guard).add(p);
 			}
-		}
-	}
-
-	private Map<StaticallyCheckedGuard, List<Condition>> replaceIdenticalPredicates(
-			final StaticallyCheckedEvent event,
-			final Map<StaticallyCheckedGuard, List<Predicate>> predicates)
-	{
-		final Collection<Condition> eventConditions = conditions.conditions.get(event.label).values();
-		// replace each predicate in "predicates" by its normalized version from conditions
-		return predicates.entrySet().stream().collect(Collectors.toMap(e -> e.getKey(), e -> {
-			final List<Predicate> predicates_list = e.getValue();
-			return predicates_list.stream()
-				.map(originalPredicate -> {
-					final String normalizedOrigPred = normalizedPredicates.get(originalPredicate).toString();
-
-					return eventConditions.stream()
-						.filter(condition ->
-							normalizedPredicates.get(condition.predicate).toString().equals(normalizedOrigPred))
-						.findFirst().get();
-				})
-				.collect(Collectors.toList());
-		}));
+		});
+		return result;
 	}
 
 	private String computeWDPredicate(
@@ -339,6 +301,9 @@ public class ConditionsExtractor {
 			final ITypeEnvironment typeEnvironment)
 	{
 		if (!predicate.isTypeChecked()) {
+			// NB! typeCheck() call changes "predicate" object!
+			// if "predicate" was a key in any mapping, it becomes
+			// non-existent after typeCheck()!
 			final ITypeCheckResult tc = predicate.typeCheck(typeEnvironment);
 			if (tc.hasProblem()) {
 				throw new IllegalArgumentException(
@@ -351,121 +316,155 @@ public class ConditionsExtractor {
 		return predicate.getWDPredicate().toString();
 	}
 
-	private void normalizePredicates(final List<Predicate> predicates)
+	class PredicatesNormalizer
 	{
-		predicates.stream().forEach(predicate -> {
-			if (! normalizedPredicates.containsKey(predicate)) {
-				normalizedPredicates.put(predicate, getNormalizedPredicate(predicate));
-			}
-		});
-	}
 
-	private Predicate getNormalizedPredicate(final Predicate predicate)
-	{
-		if (predicate instanceof RelationalPredicate) {
-		
-			final RelationalPredicate p = (RelationalPredicate) predicate;
-			final Expression left = p.getLeft();
-			final Expression right = p.getRight();
-			switch (p.getTag()) {
-				case Formula.EQUAL:
-				case Formula.NOTEQUAL:
-				case Formula.LT:
-				case Formula.LE:
-				case Formula.GT:
-				case Formula.GE:
-					if (left.toString().compareTo(right.toString()) > 0) {
-						return getNormalizedPredicate(p.getFactory().makeRelationalPredicate(
-									getInvertedTag(p.getTag()),
-									right,
-									left,
-									p.getSourceLocation()));
-					} else if (p.getTag() == Formula.NOTEQUAL || p.getTag() == Formula.GT || p.getTag() == Formula.GE) {
+		/**
+		 * Caching mapping from any predicate to its normalized predicate.
+		 *
+		 * It uses String instead of Predicate because Predicate objects
+		 * are changing after type-checking (putting it to a Condition object)
+		 * and are making non-existent in the mapping.
+		 */
+		private final Map<String, String> normalizedPredicates = new HashMap<>();
+
+		public String get(final Predicate predicate)
+		{
+			final String p = predicate.toString();
+			final String r = normalizedPredicates.get(p);
+			if (r != null) {
+				return r;
+			} else {
+				final String _r = getNormalizedPredicate(predicate).toString();
+				normalizedPredicates.put(p, _r);
+				return _r;
+			}
+		}
+
+		private Predicate getNormalizedPredicate(final Predicate predicate)
+		{
+			if (predicate instanceof RelationalPredicate) {
+
+				final RelationalPredicate p = (RelationalPredicate) predicate;
+				final Expression left = p.getLeft();
+				final Expression right = p.getRight();
+				switch (p.getTag()) {
+					case Formula.EQUAL:
+					case Formula.NOTEQUAL:
+					case Formula.LT:
+					case Formula.LE:
+					case Formula.GT:
+					case Formula.GE:
+						if (left.toString().compareTo(right.toString()) > 0) {
+							return getNormalizedPredicate(p.getFactory().makeRelationalPredicate(
+										getInvertedTag(p.getTag()),
+										right,
+										left,
+										p.getSourceLocation()));
+						} else if (p.getTag() == Formula.NOTEQUAL || p.getTag() == Formula.GT || p.getTag() == Formula.GE) {
+							return getNormalizedPredicate(p.getFactory().makeRelationalPredicate(
+										getNegatedTag(p.getTag()),
+										left,
+										right,
+										p.getSourceLocation()));
+						} else {
+							break;
+						}
+					case Formula.IN:
+					case Formula.SUBSETEQ:
+					case Formula.SUBSET:
+						break;
+					case Formula.NOTIN:
+					case Formula.NOTSUBSETEQ:
+					case Formula.NOTSUBSET:
 						return getNormalizedPredicate(p.getFactory().makeRelationalPredicate(
 									getNegatedTag(p.getTag()),
 									left,
 									right,
 									p.getSourceLocation()));
-					} else {
+					default:
 						break;
-					}
-				case Formula.IN:
-				case Formula.SUBSETEQ:
-				case Formula.SUBSET:
-					break;
-				case Formula.NOTIN:
-				case Formula.NOTSUBSETEQ:
-				case Formula.NOTSUBSET:
-					return getNormalizedPredicate(p.getFactory().makeRelationalPredicate(
-								getNegatedTag(p.getTag()),
-								left,
-								right,
-								p.getSourceLocation()));
+				}
+			}
+		
+			return predicate;
+		}
+
+		private int getInvertedTag(int tag)
+		{
+			switch (tag) {
+				case Formula.LT:
+					return Formula.GT;
+				case Formula.LE:
+					return Formula.GE;
+				case Formula.GT:
+					return Formula.LT;
+				case Formula.GE:
+					return Formula.LE;
 				default:
-					break;
+					return tag;
 			}
 		}
-	
-		return predicate;
-	}
 
-	private int getInvertedTag(int tag)
-	{
-		switch (tag) {
-			case Formula.LT:
-				return Formula.GT;
-			case Formula.LE:
-				return Formula.GE;
-			case Formula.GT:
-				return Formula.LT;
-			case Formula.GE:
-				return Formula.LE;
-			default:
-				return tag;
-		}
-	}
-
-	private int getNegatedTag(int tag)
-	{
-		switch (tag) {
-			case Formula.EQUAL:
-				return Formula.NOTEQUAL;
-			case Formula.NOTEQUAL:
-				return Formula.EQUAL;
-			case Formula.LT:
-				return Formula.GE;
-			case Formula.LE:
-				return Formula.GT;
-			case Formula.GT:
-				return Formula.LE;
-			case Formula.GE:
-				return Formula.LT;
-			case Formula.IN:
-				return Formula.NOTIN;
-			case Formula.SUBSETEQ:
-				return Formula.NOTSUBSETEQ;
-			case Formula.SUBSET:
-				return Formula.NOTSUBSET;
-			case Formula.NOTIN:
-				return Formula.IN;
-			case Formula.NOTSUBSETEQ:
-				return Formula.SUBSETEQ;
-			case Formula.NOTSUBSET:
-				return Formula.SUBSET;
-			default:
-				return tag;
+		private int getNegatedTag(int tag)
+		{
+			switch (tag) {
+				case Formula.EQUAL:
+					return Formula.NOTEQUAL;
+				case Formula.NOTEQUAL:
+					return Formula.EQUAL;
+				case Formula.LT:
+					return Formula.GE;
+				case Formula.LE:
+					return Formula.GT;
+				case Formula.GT:
+					return Formula.LE;
+				case Formula.GE:
+					return Formula.LT;
+				case Formula.IN:
+					return Formula.NOTIN;
+				case Formula.SUBSETEQ:
+					return Formula.NOTSUBSETEQ;
+				case Formula.SUBSET:
+					return Formula.NOTSUBSET;
+				case Formula.NOTIN:
+					return Formula.IN;
+				case Formula.NOTSUBSETEQ:
+					return Formula.SUBSETEQ;
+				case Formula.NOTSUBSET:
+					return Formula.SUBSET;
+				default:
+					return tag;
+			}
 		}
 	}
 
 	/**
-	 * Prints the conditions.
+	 * Prints the conditions by events.
 	 * It prints the list of conditions identifiers and
 	 * conditions predicates for each event.
 	 * The order of events is gotten from the machine.
 	 *
+	 * For example, for event <em>evt</em> with two
+	 * guards:
+	 * <pre>
+	 * grd1: p /= 0 &amp; q = 1
+	 * grd2: p = 0 or q = 2
+	 * </pre>
+	 * the function prints the following:
+	 * <pre>
+	 * evt
+	 *  - [grd1/1] p /= 0
+	 *  - [grd1/2] q = 1
+	 *  - [grd2/1] q = 2
+	 * </pre>
+	 * The predicate <code>p = 0</code> was removed
+	 * because it is identical to <code>p /= 0</code>.
+	 *
 	 * @param out	stream to output the conditions
 	 */
-	public void printConditions(final PrintStream out) {
+	public void printConditions(final PrintStream out)
+	{
 		scMachine.events.stream().forEach(scEvent -> {
 			out.println(scEvent.label);
 			conditions.conditions_order.get(scEvent.label).stream().forEach(condition_id -> {
@@ -477,25 +476,54 @@ public class ConditionsExtractor {
 	}
 
 	/**
-	 * Prints the conditions.
+	 * Prints the conditions by guards.
 	 * It prints the list of conditions identifiers and
-	 * conditions predicates for each event.
-	 * The order of events is gotten from the machine.
+	 * elementary predicates for each guard.
+	 * The order of events and guards is gotten from the machine.
+	 *
+	 * For example, for event <em>evt</em> with two guards:
+	 * <pre>
+	 * grd1: p /= 0 &amp; q = 1
+	 * grd2: p = 0 or q = 2
+	 * </pre>
+	 * the function prints the following:
+	 * <pre>
+	 * evt/grd1
+	 *  - [grd1/1] p /= 0
+	 *  - [grd1/2] q = 1
+	 *
+	 * evt/grd2
+	 *  - [grd1/1] p = 0
+	 *  - [grd2/1] q = 2
+	 * </pre>
+	 * The predicate <code>p = 0</code> was named as
+	 * <code>grd1/1</code> because it is identical
+	 * to <code>grd1/1</code>.
+	 *
 	 *
 	 * @param out	stream to output the conditions
 	 */
-	public void printGuardsConditions(final PrintStream out) {
-		scMachine.events.stream().forEach(scEvent ->
-			scEvent.guards.stream().forEach(scGuard -> {
-				final String fullGuardLabel = scEvent.label + "/" + scGuard.label;
+	public void printGuardsConditions(final PrintStream out)
+	{
+		scMachine.events.stream().forEach(event -> {
+			event.guards.stream().forEach(guard -> {
+				final String fullGuardLabel = event.label + "/" + guard.label;
 				out.println(fullGuardLabel);
-				guardsConditions.conditions_order.get(fullGuardLabel).stream().forEach(condition_id -> {
-					final String predicate = guardsConditions.conditions.get(fullGuardLabel).get(condition_id).predicate.toString();
-					out.println(" - [" + condition_id + "] " + predicate);
+				elementaryPredicates.get(event).get(guard).stream().forEach(predicate -> {
+					final Condition condition = findCondition(event, predicate);
+					out.println(" - [" + condition.id + "] " + predicate);
 				});
 				out.println();
-			})
-		);
+			});
+		});
 	}
 
+	private Condition findCondition(final StaticallyCheckedEvent event, final Predicate predicate)
+	{
+		final String normalized = predicatesNormalizer.get(predicate);
+		return conditions.conditions.get(event.label).values().stream()
+			.filter(condition -> predicatesNormalizer.get(condition.predicate).equals(normalized))
+			.findFirst()
+			.get();
+	}
 }

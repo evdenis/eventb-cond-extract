@@ -1,5 +1,9 @@
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import org.eventb.core.ast.Predicate;
 
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -218,7 +222,7 @@ public class ConditionsExtractorTest
 	}
 
 	@Test
-	public void guardsConditions()
+	public void elementaryPredicatesTest()
 	{
 		final StaticallyCheckedParameter scParameter = new StaticallyCheckedParameter("p", INT);
 		final StaticallyCheckedGuard scGuard1 = new StaticallyCheckedGuard("grd1", "0 < p");
@@ -227,15 +231,21 @@ public class ConditionsExtractorTest
 		final StaticallyCheckedMachine scMachine = new StaticallyCheckedMachine(new ArrayList<>(), Arrays.asList(scEvent));
 		final ConditionsExtractor conditionsExtractor = new ConditionsExtractor(scMachine);
 
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.size(), 2);
-		assertTrue(conditionsExtractor.guardsConditions.conditions_order.containsKey("event-1/grd1"));
-		assertTrue(conditionsExtractor.guardsConditions.conditions_order.containsKey("event-1/grd2"));
+		assertEquals(conditionsExtractor.elementaryPredicates.size(), 1);
+		assertTrue(conditionsExtractor.elementaryPredicates.containsKey(scEvent));
 
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd1").size(), 1);
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd1").get(0), "grd1/1");
+		final Map<StaticallyCheckedGuard, List<Predicate>> eventPart = conditionsExtractor.elementaryPredicates.get(scEvent);
+		assertEquals(eventPart.size(), 2);
+		assertTrue(eventPart.containsKey(scGuard1));
+		assertTrue(eventPart.containsKey(scGuard2));
 
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").size(), 2);
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").get(0), "grd1/1");
-		assertEquals(conditionsExtractor.guardsConditions.conditions_order.get("event-1/grd2").get(1), "grd2/1");
+		final List<Predicate> grd1Predicates = eventPart.get(scGuard1);
+		assertEquals(grd1Predicates.size(), 1);
+		assertEquals(grd1Predicates.get(0).toString(), "0<p");
+
+		final List<Predicate> grd2Predicates = eventPart.get(scGuard2);
+		assertEquals(grd2Predicates.size(), 2);
+		assertEquals(grd2Predicates.get(0).toString(), "p\u22640");
+		assertEquals(grd2Predicates.get(1).toString(), "p<2");
 	}
 }
