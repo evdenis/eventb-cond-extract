@@ -31,9 +31,9 @@ public class Runner
 		try {
 			cmd = parser.parse(options, args);
 
-			String defaultModelFile = System.getenv("EVENTB_MODEL");
+			String defaultModelFile = System.getenv("REPLAY_MODEL");
 			if (defaultModelFile == null) {
-				defaultModelFile = "/opt/isp-rtv/model/MX1.bum";
+				defaultModelFile = "/opt/model/MX1.bum";
 			}
 			final String modelFile = cmd.getOptionValue("model", defaultModelFile);
 			if (!modelFile.endsWith(".bum")) {
