@@ -28,28 +28,14 @@ public final class StaticallyCheckedEvent
 	 *
 	 * Immutable.
 	 */
-	public final List<StaticallyCheckedParameter> parameters;
+	public final KeySuppliedSequence<String, StaticallyCheckedParameter> parameters;
 
 	/**
 	 * List of guards.
 	 *
 	 * Immutable.
 	 */
-	public final List<StaticallyCheckedGuard> guards;
-
-	/**
-	 * Parameters indexed by its identifiers.
-	 *
-	 * Immutable.
-	 */
-	public final Map<String, StaticallyCheckedParameter> parametersMap;
-
-	/**
-	 * Guards indexed by its identifiers.
-	 *
-	 * Immutable.
-	 */
-	public final Map<String, StaticallyCheckedGuard> guardsMap;
+	public final KeySuppliedSequence<String, StaticallyCheckedGuard> guards;
 
 	/**
 	 * @param label		name of the event
@@ -61,9 +47,7 @@ public final class StaticallyCheckedEvent
 			final List<StaticallyCheckedGuard> guards)
 	{
 		this.label = label;
-		this.parameters = Collections.unmodifiableList(parameters);
-		this.guards = Collections.unmodifiableList(guards);
-		this.parametersMap = Collections.unmodifiableMap(parameters.stream().collect(Collectors.toMap(p -> p.name, p -> p)));
-		this.guardsMap = Collections.unmodifiableMap(guards.stream().collect(Collectors.toMap(g -> g.label, g -> g)));
+		this.parameters = new KeySuppliedSequence<>(parameters, p -> p.name);
+		this.guards = new KeySuppliedSequence<>(guards, g -> g.label);
 	}
 }

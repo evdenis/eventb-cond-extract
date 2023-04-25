@@ -24,6 +24,11 @@ public final class Condition
 	public final String wdPredicate;
 
 	/**
+	 * normalized text of the predicate
+	 */
+	public final String normalizedPredicate;
+
+	/**
 	 * @param id		identifier of the condition
 	 * @param predicate	formula of the condition
 	 * @param wdPredicate	formula of the well-formed predicate for {@link predicate}
@@ -33,5 +38,6 @@ public final class Condition
 		this.id = id;
 		this.predicate = predicate;
 		this.wdPredicate = wdPredicate;
+		this.normalizedPredicate = new PredicatesNormalizer().normalize(predicate);
 	}
 }

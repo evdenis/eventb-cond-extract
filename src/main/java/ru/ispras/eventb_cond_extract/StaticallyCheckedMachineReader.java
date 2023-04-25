@@ -27,10 +27,10 @@ import org.xml.sax.SAXException;
  * To read the machine instantiate this class and call
  * {@link read} method with path to *.bcm file. It returns the machine.
  */
-public class StaticallyCheckedMachineReader
-{
+public class StaticallyCheckedMachineReader {
 	static final String MACHINE_TAG = "org.eventb.core.scMachineFile";
 	static final String VARIABLE_TAG = "org.eventb.core.scVariable";
+	static final String INVARIANT_TAG = "org.eventb.core.scInvariant";
 	static final String EVENT_TAG = "org.eventb.core.scEvent";
 	static final String PARAMETER_TAG = "org.eventb.core.scParameter";
 	static final String GUARD_TAG = "org.eventb.core.scGuard";
@@ -51,8 +51,7 @@ public class StaticallyCheckedMachineReader
 	 * @throws IllegalArgumentException	if the *.bcm file content is incorrect
 	 */
 	public StaticallyCheckedMachine read(final String path)
-		throws ParserConfigurationException, SAXException, IOException
-	{
+		throws ParserConfigurationException, SAXException, IOException {
 		final DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		final DocumentBuilder builder = factory.newDocumentBuilder();
 		final Document document = builder.parse(new File(path));
@@ -60,15 +59,14 @@ public class StaticallyCheckedMachineReader
 		return readMachine(document.getDocumentElement());
 	}
 
-	private StaticallyCheckedMachine readMachine(final Element element)
-	{
+	private StaticallyCheckedMachine readMachine(final Element element) {
 		return new StaticallyCheckedMachine (
 			readVariables(element.getElementsByTagName(VARIABLE_TAG)),
+			readInvariants(element.getElementsByTagName(INVARIANT_TAG)),
 			readEvents(element.getElementsByTagName(EVENT_TAG)));
 	}
 
-	private List<StaticallyCheckedVariable> readVariables(final NodeList nodes)
-	{
+	private List<StaticallyCheckedVariable> readVariables(final NodeList nodes) {
 		return
 			IntStream.range(0, nodes.getLength())
 			.mapToObj(i -> nodes.item(i))
@@ -80,8 +78,7 @@ public class StaticallyCheckedMachineReader
 			.collect(Collectors.toList());
 	}
 
-	private List<StaticallyCheckedEvent> readEvents(final NodeList nodes)
-	{
+	private List<StaticallyCheckedEvent> readEvents(final NodeList nodes) {
 		return
 			IntStream.range(0, nodes.getLength())
 			.mapToObj(i -> nodes.item(i))
@@ -94,8 +91,19 @@ public class StaticallyCheckedMachineReader
 			.collect(Collectors.toList());
 	}
 
-	private List<StaticallyCheckedParameter> readParameters(final NodeList nodes)
-	{
+	private List<StaticallyCheckedInvariant> readInvariants(final NodeList nodes) {
+		return
+			IntStream.range(0, nodes.getLength())
+			.mapToObj(i -> nodes.item(i))
+			.filter(n -> n.getNodeType() == Node.ELEMENT_NODE)
+			.map(n -> (Element) n)
+			.map(e -> new StaticallyCheckedInvariant(
+						e.getAttribute(LABEL_ATTRIBUTE),
+						e.getAttribute(PREDICATE_ATTRIBUTE)))
+			.collect(Collectors.toList());
+	}
+
+	private List<StaticallyCheckedParameter> readParameters(final NodeList nodes) {
 		return
 			IntStream.range(0, nodes.getLength())
 			.mapToObj(i -> nodes.item(i))
@@ -107,8 +115,7 @@ public class StaticallyCheckedMachineReader
 			.collect(Collectors.toList());
 	}
 
-	private List<StaticallyCheckedGuard> readGuards(final NodeList nodes)
-	{
+	private List<StaticallyCheckedGuard> readGuards(final NodeList nodes) {
 		return
 			IntStream.range(0, nodes.getLength())
 			.mapToObj(i -> nodes.item(i))
@@ -119,5 +126,4 @@ public class StaticallyCheckedMachineReader
 						e.getAttribute(PREDICATE_ATTRIBUTE)))
 			.collect(Collectors.toList());
 	}
-
 }

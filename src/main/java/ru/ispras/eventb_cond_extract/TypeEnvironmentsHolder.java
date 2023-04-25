@@ -21,8 +21,7 @@ import org.eventb.core.ast.*;
  *
  * Immutable.
  */
-public final class TypeEnvironmentsHolder
-{
+public final class TypeEnvironmentsHolder {
 	/**
 	 * Type environment with all variables.
 	 */
@@ -47,48 +46,60 @@ public final class TypeEnvironmentsHolder
 	 */
 	public final FormulaFactory ff;
 
+	private final StaticallyCheckedMachine scMachine;
+
 	/**
 	 * @param scMachine	statically checked machine to extract type environments
 	 * @throws IllegalArgumentException	if the machine is incorrect
 	 */
 	public TypeEnvironmentsHolder(final StaticallyCheckedMachine scMachine) {
-
 		this.ff = FormulaFactory.getDefault();
+		this.scMachine = scMachine;
+		this.variablesTypeEnvironment = makeVariablesTypeEnvironment();
+		this.eventsTypeEnvironments = makeEventsTypeEnvironments();
+	}
+
+	private ITypeEnvironment makeVariablesTypeEnvironment() {
 		final ITypeEnvironmentBuilder builder = ff.makeTypeEnvironment();
+		this.scMachine.variables.values.forEach(v -> builder.addName(v.name, getVariableType(v)));
+		return builder.makeSnapshot();
+	}
 
-		scMachine.variables.forEach(variable -> {
-			final IParseResult r = ff.parseType(variable.type);
-			if (r.hasProblem()) {
-				throw new IllegalArgumentException(
-						Stream.concat(
-							Stream.of("Can't parse type of the variable " + variable.name + ": " + variable.type),
-							r.getProblems().stream().map(Object::toString))
-						.collect(Collectors.joining(System.lineSeparator())));
-			} else {
-				builder.addName(variable.name, r.getParsedType());
-			}
-		});
+	private Type getVariableType(final StaticallyCheckedVariable variable) {
+		final IParseResult r = this.ff.parseType(variable.type);
+		if (r.hasProblem()) {
+			throw new IllegalArgumentException(
+					Stream.concat(
+						Stream.of("Can't parse type of the variable " + variable.name + ": " + variable.type),
+						r.getProblems().stream().map(Object::toString))
+					.collect(Collectors.joining(System.lineSeparator())));
+		}
 
-		this.variablesTypeEnvironment = builder.makeSnapshot();
+		return r.getParsedType();
+	}
 
-		this.eventsTypeEnvironments = Collections.unmodifiableMap(
-				scMachine.events.stream().collect(Collectors.toMap(scEvent -> scEvent.label, scEvent -> {
+	private Map<String, ITypeEnvironment> makeEventsTypeEnvironments() {
+		return this.scMachine.events.values.stream().collect(
+				Collectors.toUnmodifiableMap(scEvent -> scEvent.label, this::makeEventTypeEnvironment));
+	}
 
-			final ITypeEnvironmentBuilder eventBuilder = ff.makeTypeEnvironment();
-			eventBuilder.addAll(this.variablesTypeEnvironment);
-			scEvent.parameters.forEach(parameter -> {
-				final IParseResult r = ff.parseType(parameter.type);
-				if (r.hasProblem()) {
-					throw new IllegalArgumentException(
-						Stream.concat(
-							Stream.of("Can't parse type of the parmeter " + parameter.name + ": " + parameter.type),
-							r.getProblems().stream().map(Object::toString))
-						.collect(Collectors.joining(System.lineSeparator())));
-				} else {
-					eventBuilder.addName(parameter.name, r.getParsedType());
-				}
-			});
-			return eventBuilder.makeSnapshot();
-		})));
+	private ITypeEnvironment makeEventTypeEnvironment(final StaticallyCheckedEvent event) {
+		final ITypeEnvironmentBuilder builder = this.ff.makeTypeEnvironment();
+		builder.addAll(this.variablesTypeEnvironment);
+		event.parameters.values.forEach(p -> builder.addName(p.name, getParameterType(p)));
+		return builder.makeSnapshot();
+	}
+
+	private Type getParameterType(final StaticallyCheckedParameter parameter) {
+		final IParseResult r = this.ff.parseType(parameter.type);
+		if (r.hasProblem()) {
+			throw new IllegalArgumentException(
+				Stream.concat(
+					Stream.of("Can't parse type of the parmeter " + parameter.name + ": " + parameter.type),
+					r.getProblems().stream().map(Object::toString))
+				.collect(Collectors.joining(System.lineSeparator())));
+		}
+
+		return r.getParsedType();
 	}
 }
