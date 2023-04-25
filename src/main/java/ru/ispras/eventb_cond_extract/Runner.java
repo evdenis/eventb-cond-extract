@@ -15,6 +15,7 @@ import org.apache.commons.cli.*;
  *
  * Command-line arguments available:
  * -m, --model		file path to *.bum file (Rodin Event-B model)
+ * -e, --events		need print conditions of events (default, not print)
  * -i, --invariants	need print conditions of invariants (default, not print)
  * -n, --normalized	need print normalized predicates
  *
@@ -25,10 +26,9 @@ public class Runner {
 		Options options = new Options();
 
 		options.addOption("m", "model", true, "model.bum file path");
-		//options.addOption("g", "guards", false, "print guards coverage instead of events coverage");
+		options.addOption("e", "events", false, "print conditions from events");
 		options.addOption("i", "invariants", false, "print conditions from invariants");
 		options.addOption("n", "normalized", false, "print normalized predicates of conditions");
-		//options.addOption("o", "output", false, "file to output the conditions");
 
 		final CommandLineParser parser = new DefaultParser();
 		final HelpFormatter formatter = new HelpFormatter();
@@ -42,6 +42,7 @@ public class Runner {
 				defaultModelFile = "/opt/model/MX1.bum";
 			}
 			final boolean needNormalized = cmd.hasOption("normalized");
+			final boolean needEvents = cmd.hasOption("events");
 			final boolean needInvariants = cmd.hasOption("invariants");
 			final String modelFile = cmd.getOptionValue("model", defaultModelFile);
 			if (!modelFile.endsWith(".bum")) {
@@ -51,7 +52,9 @@ public class Runner {
 			final StaticallyCheckedMachine scMachine = new StaticallyCheckedMachineReader().read(scModelFile);
 			final MachineConditions conditions = new ConditionsExtractor(scMachine).machineConditions;
 
-			printConditions(conditions.eventsConditions, needNormalized, System.out);
+			if (needEvents) {
+				printConditions(conditions.eventsConditions, needNormalized, System.out);
+			}
 			if (needInvariants) {
 				printConditions(conditions.invariantsConditions, needNormalized, System.out);
 			}
