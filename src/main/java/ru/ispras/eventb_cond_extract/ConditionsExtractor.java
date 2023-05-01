@@ -1,6 +1,5 @@
 package ru.ispras.eventb_cond_extract;
 
-import java.io.PrintStream;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -84,12 +83,13 @@ public final class ConditionsExtractor {
 		final List<Condition> conditions = new ArrayList<>();
 
 		event.guards.values.forEach(guard -> {
-			final List<Predicate> predicates = splitToConditions(getGuardPredicate(guard));
+			final List<Predicate> predicates = PredicateSplitter.splitToConditions(getGuardPredicate(guard));
 			IntStream.range(0, predicates.size()).forEach(i -> {
 				final Predicate predicate = predicates.get(i);
 				final String conditionId = String.format("%s/%s/%d", event.label, guard.label, i + 1);
-				final String wdPredicate = computeWDPredicate(predicate, typeEnvironment);
-				final Condition condition = new Condition(conditionId, predicate, wdPredicate);
+				final boolean isConst = PredicateConstChecker.isConst(predicate, scMachine, event);
+				final String wdPredicate = WDComputer.computeWDPredicate(predicate, typeEnvironment);
+				final Condition condition = new Condition(conditionId, predicate, isConst, wdPredicate);
 
 				conditions.add(condition);
 			});
@@ -109,12 +109,13 @@ public final class ConditionsExtractor {
 		final ITypeEnvironment typeEnvironment = typeEnvironments.variablesTypeEnvironment;
 		final List<Condition> conditions = new ArrayList<>();
 
-		final List<Predicate> predicates = splitToConditions(getInvariantPredicate(invariant));
+		final List<Predicate> predicates = PredicateSplitter.splitToConditions(getInvariantPredicate(invariant));
 		IntStream.range(0, predicates.size()).forEach(i -> {
 			final Predicate predicate = predicates.get(i);
 			final String conditionId = String.format("%s/%d", invariant.label, i + 1);
-			final String wdPredicate = computeWDPredicate(predicate, typeEnvironment);
-			final Condition condition = new Condition(conditionId, predicate, wdPredicate);
+			final boolean isConst = PredicateConstChecker.isConst(predicate, scMachine, null);
+			final String wdPredicate = WDComputer.computeWDPredicate(predicate, typeEnvironment);
+			final Condition condition = new Condition(conditionId, predicate, isConst, wdPredicate);
 			conditions.add(condition);
 		});
 
@@ -145,129 +146,5 @@ public final class ConditionsExtractor {
 				.collect(Collectors.joining(System.lineSeparator())));
 		}
 		return predicate;
-	}
-
-	private List<Predicate> splitToConditions(final Predicate predicate) {
-		final List<Predicate> conditions = new ArrayList<>();
-
-		final Deque<Predicate> queue = new LinkedList<>();
-		queue.addFirst(predicate);
-
-		while (!queue.isEmpty()) {
-			final Predicate p = queue.removeFirst();
-			if (p instanceof BinaryPredicate) {
-				// left => right
-				// left <=> right
-				queue.addFirst(((BinaryPredicate) p).getRight());
-				queue.addFirst(((BinaryPredicate) p).getLeft());
-				continue;
-			} else if (p instanceof AssociativePredicate) {
-				// child & child & child ... child
-				// child or child or child ... child
-				final AssociativePredicate ap = (AssociativePredicate) p;
-				for (int i = ap.getChildCount() - 1; i >= 0; --i) {
-					queue.addFirst(ap.getChild(i));
-				}
-				continue;
-			} else if (p instanceof UnaryPredicate) {
-				// not child
-				queue.addFirst(((UnaryPredicate) p).getChild());
-				continue;
-			} else if (p instanceof RelationalPredicate) {
-				// left = right
-				// left /= right
-				// left < right
-				// left <= right
-				// left > right
-				// left >= right
-				// left : right
-				// left /: right
-				// left <: right
-				// left <<: right
-				// left /<: right
-				// left /<<: right
-				final RelationalPredicate r = (RelationalPredicate) p;
-				final Expression left = r.getLeft();
-				final Expression right = r.getRight();
-				switch (p.getTag()) {
-					case Formula.EQUAL:
-					case Formula.NOTEQUAL:
-					case Formula.LT:
-					case Formula.LE:
-					case Formula.GT:
-					case Formula.GE:
-						break;
-					case Formula.IN:
-					case Formula.NOTIN:
-						if (right instanceof SetExtension) {
-							for (final Expression member: ((SetExtension) right).getMembers()) {
-								queue.addFirst(p.getFactory().makeRelationalPredicate(
-											Formula.EQUAL,
-											left,
-											member,
-											p.getSourceLocation()));
-							}
-							continue;
-						} else if (right instanceof AssociativeExpression) {
-							switch (right.getTag()) {
-								case Formula.BUNION: case Formula.BINTER:
-									for (final Expression child: ((AssociativeExpression) right).getChildren()) {
-										queue.addFirst(p.getFactory().makeRelationalPredicate(
-													Formula.IN,
-													left,
-													child,
-													p.getSourceLocation()));
-									}
-									continue;
-								default:
-									break;
-							}
-						} else {
-							break;
-						}
-					case Formula.SUBSETEQ:
-					case Formula.NOTSUBSETEQ:
-						if (left instanceof SetExtension) {
-							for (final Expression member: ((SetExtension) left).getMembers()) {
-								queue.addFirst(p.getFactory().makeRelationalPredicate(
-											Formula.IN,
-											member,
-											right,
-											p.getSourceLocation()));
-							}
-							continue;
-						} else {
-							break;
-						}
-					case Formula.SUBSET:
-					case Formula.NOTSUBSET:
-					default:
-						break;
-				}
-			}
-
-			conditions.add(p);
-		}
-		return conditions;
-	}
-
-	private String computeWDPredicate(
-			final Predicate predicate,
-			final ITypeEnvironment typeEnvironment)
-	{
-		if (!predicate.isTypeChecked()) {
-			// NB! typeCheck() call changes "predicate" object!
-			// if "predicate" was a key in any mapping, it becomes
-			// non-existent after typeCheck()!
-			final ITypeCheckResult tc = predicate.typeCheck(typeEnvironment);
-			if (tc.hasProblem()) {
-				throw new IllegalArgumentException(
-					Stream.concat(
-						Stream.of("Cannot type-check predicate: " + predicate.toString()),
-						tc.getProblems().stream().map(Object::toString))
-					.collect(Collectors.joining(System.lineSeparator())));
-			}
-		}
-		return predicate.getWDPredicate().toString();
 	}
 }

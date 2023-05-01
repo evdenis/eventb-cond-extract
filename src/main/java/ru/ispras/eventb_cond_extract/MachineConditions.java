@@ -1,7 +1,6 @@
 package ru.ispras.eventb_cond_extract;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Represents conditions of Event-B machine.

@@ -1,6 +1,5 @@
 package ru.ispras.eventb_cond_extract;
 
-import java.io.PrintStream;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;

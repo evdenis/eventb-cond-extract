@@ -1,9 +1,6 @@
 package ru.ispras.eventb_cond_extract;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Represents Event-B event from the statically checked model.

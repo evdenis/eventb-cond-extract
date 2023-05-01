@@ -83,10 +83,15 @@ public class Runner {
 	 * </pre>
 	 * the function prints the following (normalized is needed):
 	 * <pre>
-	 * [evt/grd1/1][p/=0][0=p]
-	 * [evt/grd1/2][q=1][1=q]
-	 * [evt/grd2/1][p=0][0=p]
-	 * [evt/grd2/2][q=2][2=q]
+	 * [evt/grd1/1][][p/=0][0=p]
+	 * [evt/grd1/2][][q=1][1=q]
+	 * [evt/grd2/1][][p=0][0=p]
+	 * [evt/grd2/2][][q=2][2=q]
+	 * </pre>
+	 *
+	 * If the condition is const, the second [] has word const:
+	 * <pre>
+	 * [inv/10][const][O_WRONLY/=O_RDWR][O_WRONLY/=O_RDWR]
 	 * </pre>
 	 *
 	 * @param conditions		conditions
@@ -98,8 +103,10 @@ public class Runner {
 			final boolean needNormalized,
 			final PrintStream out) {
 		streamOf(conditions).forEach(condition -> {
-			final String predicate = condition.predicate.toString();
-			out.print("[" + condition.id + "][" + predicate + "]");
+			final String conditionIdString = "[" + condition.id + "]";
+			final String constString = "[" + (condition.isConst ? "const" : "") + "]";
+			final String predicateString = "[" + condition.predicate.toString() + "]";
+			out.print(conditionIdString + constString + predicateString);
 			if (needNormalized) {
 				out.print("[" + condition.normalizedPredicate + "]");
 			}
