@@ -6,17 +6,11 @@
     "configurations": [
         {
             "type": "java",
-            "name": "Current File",
-            "request": "launch",
-            "mainClass": "${file}"
-        },
-        {
-            "type": "java",
             "name": "Runner",
             "request": "launch",
             "mainClass": "ru.ispras.eventb_cond_extract.Runner",
             "projectName": "eventb-cond-extract",
-            "args": "-m /var/lib/isp-rtv/model/MX1.bum -i -e",
+            "args": "-m /var/lib/anis/model2/MX1.bum -i",
         }
     ]
 }

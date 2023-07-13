@@ -7,7 +7,7 @@
 	
 	<groupId>ru.ispras</groupId>  
 	<artifactId>eventb-cond-extract</artifactId>  
-	<version>1.3-SNAPSHOT</version>
+	<version>1.4-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>Event-B Conditions Extractor</name>
